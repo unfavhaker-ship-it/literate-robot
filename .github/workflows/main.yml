@@ -1,25 +1,24 @@
-name: Free 16GB Windows RDP - Tanmay Safe
+name: Free 16GB Windows RDP - Fixed Password
 
 on:
   workflow_dispatch:
 
 jobs:
   rdp:
-    runs-on: windows-latest   # 2026 mein: 4 vCPU, 16 GB RAM, public repo pe free
+    runs-on: windows-latest   # 4 vCPU + 16 GB RAM
 
     steps:
     - name: Checkout code (if needed)
       uses: actions/checkout@v4
 
-    - name: Enable RDP + Create Strong Admin User
+    - name: Enable RDP + Create Admin User (Fixed: No ! in Pass)
       run: |
-        # Strong password use kar (change kar lena)
-        net user TanmayAdmin P@ssw0rdStrong2026! /add
+        net user TanmayAdmin MySecurePass2026 /add
         net localgroup "Administrators" TanmayAdmin /add
         reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
         reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 1 /f
         netsh advfirewall firewall set rule group="remote desktop" new enable=yes
-      shell: pwsh   # PowerShell use karo better error handling ke liye
+      shell: cmd   # CMD use karo – PowerShell mein ! issue avoid
 
     - name: Download and Install Tailscale
       run: |
@@ -29,11 +28,10 @@ jobs:
           Write-Output "Tailscale installed successfully."
         } catch {
           Write-Error "Tailscale install failed: $_"
-          # Job ko continue rakhne ke liye exit nahi kar rahe
         }
       shell: pwsh
 
-    - name: Connect Tailscale (with retry if needed)
+    - name: Connect Tailscale (with retry)
       run: |
         $attempt = 1
         do {
@@ -49,9 +47,9 @@ jobs:
         } while ($attempt -le 3)
       shell: pwsh
 
-    - name: Show Tailscale Status & Your IP (Important!)
+    - name: Show Tailscale Status & Your IP
       run: |
-        Start-Sleep -Seconds 60   # Extra wait for full connect
+        Start-Sleep -Seconds 60
         & "C:\Program Files\Tailscale\tailscale.exe" status
         & "C:\Program Files\Tailscale\tailscale.exe" ip -4
       shell: pwsh
