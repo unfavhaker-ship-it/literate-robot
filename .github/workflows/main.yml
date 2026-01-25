@@ -1,4 +1,10 @@
-secure-rdp:
+name: RDP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
     runs-on: windows-latest
     timeout-minutes: 3600
 
