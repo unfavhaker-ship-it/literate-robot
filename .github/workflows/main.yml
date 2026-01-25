@@ -12,93 +12,102 @@ jobs:
       # Enable RDP + Firewall
       # ------------------------------------------------------------
       - name: Configure Core RDP Settings
+        shell: powershell
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' 
-            -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' 
-            -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' 
-            -Name "SecurityLayer" -Value 0 -Force
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
-          netsh advfirewall firewall add rule name="NOBIXRDP-Tailscale" 
-            dir=in action=allow protocol=TCP localport=3389
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "SecurityLayer" -Value 0 -Force
+
+          netsh advfirewall firewall delete rule name="NOBIXRDP-Tailscale" 2>$null
+          netsh advfirewall firewall add rule name="NOBIXRDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+
           Restart-Service TermService -Force
+
       # ------------------------------------------------------------
       # Create RDP User
       # ------------------------------------------------------------
       - name: Create RDP User
+        shell: powershell
         run: |
-          Add-Type -AssemblyName System.Security
           $chars = @{
             Upper   = [char[]](65..90)
             Lower   = [char[]](97..122)
             Number  = [char[]](48..57)
-            Special = ([char[]](33..47) + [char[]](58..64) +
-                       [char[]](91..96) + [char[]](123..126))
+            Special = ([char[]](33..47) + [char[]](58..64) + [char[]](91..96) + [char[]](123..126))
           }
+
           $password = -join (
-            ($chars.Upper   | Get-Random -Count 4) +
-            ($chars.Lower   | Get-Random -Count 4) +
-            ($chars.Number  | Get-Random -Count 4) +
+            ($chars.Upper | Get-Random -Count 4) +
+            ($chars.Lower | Get-Random -Count 4) +
+            ($chars.Number | Get-Random -Count 4) +
             ($chars.Special | Get-Random -Count 4) |
             Sort-Object { Get-Random }
           )
+
           $secure = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "NOBIXRDP" -Password $secure -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "NOBIXRDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "NOBIXRDP"
+
           echo "RDP_USER=NOBIXRDP" >> $env:GITHUB_ENV
           echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+
       # ------------------------------------------------------------
-      # Install Tailscale (FIXED)
+      # Install Tailscale
       # ------------------------------------------------------------
       - name: Install Tailscale
+        shell: powershell
         run: |
           $url = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           $path = "$env:TEMP\tailscale.msi"
           Invoke-WebRequest $url -OutFile $path
-          Start-Process msiexec.exe 
-            -ArgumentList "/i "$path" /quiet /norestart" 
-            -Wait
+          Start-Process msiexec.exe -ArgumentList "/i `"$path`" /quiet /norestart" -Wait
           Remove-Item $path -Force
+
       # ------------------------------------------------------------
-      # Connect to Tailscale
+      # Tailscale Up
       # ------------------------------------------------------------
       - name: Tailscale Up
+        shell: powershell
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up 
-            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} 
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
+            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
             --hostname=gh-runner-$env:GITHUB_RUN_ID
+
           $ip = $null
           for ($i=0; $i -lt 10 -and -not $ip; $i++) {
             $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
             Start-Sleep 5
           }
+
           if (-not $ip) {
             Write-Error "Tailscale IP not assigned"
             exit 1
           }
+
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+
       # ------------------------------------------------------------
-      # Verify RDP Port
+      # Verify RDP
       # ------------------------------------------------------------
       - name: Verify RDP
+        shell: powershell
         run: |
-          $r = Test-NetConnection $env:TAILSCALE_IP -Port 3389if (-not $r.TcpTestSucceeded) {
+          $r = Test-NetConnection $env:TAILSCALE_IP -Port 3389
+          if (-not $r.TcpTestSucceeded) {
             Write-Error "RDP port not reachable"
             exit 1
           }
+
       # ------------------------------------------------------------
-      # Keep Runner Alive + Show Access Info
+      # Show Details + Keep Alive
       # ------------------------------------------------------------
       - name: RDP Details
+        shell: powershell
         run: |
-          Write-Host ""
-          Write-Host "================ RDP ACCESS ================"
-          Write-Host "Address : $env:TAILSCALE_IP"
-          Write-Host "User    : $env:RDP_USER"
-          Write-Host "Pass    : $env:RDP_PASS"
-          Write-Host "==========================================="
-          Write-Host ""
-          while ($true) {
-            Start-Sleep 300
+          Write-Host "=========== RDP ACCESS ==========="
+          Write-Host "IP   : $env:TAILSCALE_IP"
+          Write-Host "USER : $env:RDP_USER"
+          Write-Host "PASS : $env:RDP_PASS"
+          Write-Host "================================="
+          while ($true) { Start-Sleep 300 }
