@@ -1,24 +1,24 @@
-name: Free 16GB Windows RDP - Fixed Password
+name: Free 16GB Windows RDP - Tanmay Fixed
 
 on:
   workflow_dispatch:
 
 jobs:
   rdp:
-    runs-on: windows-latest   # 4 vCPU + 16 GB RAM
+    runs-on: windows-latest   # 4 vCPU + 16 GB RAM public repo pe
 
     steps:
     - name: Checkout code (if needed)
       uses: actions/checkout@v4
 
-    - name: Enable RDP + Create Admin User (Fixed: No ! in Pass)
+    - name: Enable RDP + Create Admin User (Fixed Password)
       run: |
         net user TanmayAdmin MySecurePass2026 /add
         net localgroup "Administrators" TanmayAdmin /add
         reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
         reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 1 /f
         netsh advfirewall firewall set rule group="remote desktop" new enable=yes
-      shell: cmd   # CMD use karo – PowerShell mein ! issue avoid
+      shell: cmd   # CMD use kiya taaki password safe rahe (PowerShell se better is case mein)
 
     - name: Download and Install Tailscale
       run: |
@@ -47,7 +47,7 @@ jobs:
         } while ($attempt -le 3)
       shell: pwsh
 
-    - name: Show Tailscale Status & Your IP
+    - name: Show Tailscale Status & Your IP (Important!)
       run: |
         Start-Sleep -Seconds 60
         & "C:\Program Files\Tailscale\tailscale.exe" status
