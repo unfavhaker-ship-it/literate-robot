@@ -5,48 +5,84 @@ on:
 
 jobs:
   secure-rdp:
-    runs-on: windows-2019   # ✅ Windows Server 2019
-    timeout-minutes: 3600
+    runs-on: windows-2022
+    timeout-minutes: 360
 
     steps:
-      - name: Configure Core RDP Settings
+      - name: Configure RDP
+        shell: powershell
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-            -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty `
+            -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' `
+            -Name 'fDenyTSConnections' `
+            -Value 0 `
+            -Force
 
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-            -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty `
+            -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Name 'UserAuthentication' `
+            -Value 1 `
+            -Force
 
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-            -Name "SecurityLayer" -Value 0 -Force
+          Set-ItemProperty `
+            -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Name 'SecurityLayer' `
+            -Value 1 `
+            -Force
 
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-          Restart-Service -Name TermService -Force
+          Restart-Service TermService -Force
 
       - name: Create RDP User
+        shell: powershell
+        env:
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
         run: |
-          $password = "P@ssw0rd123!"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+          $securePass = ConvertTo-SecureString `
+            $env:RDP_PASSWORD `
+            -AsPlainText `
+            -Force
 
-          echo "RDP_USER=RDP" >> $env:GITHUB_ENV
-          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+          if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
+              Set-LocalUser -Name "RDP" -Password $securePass
+          } else {
+              New-LocalUser `
+                -Name "RDP" `
+                -Password $securePass `
+                -AccountNeverExpires
+          }
+
+          Add-LocalGroupMember `
+            -Group "Remote Desktop Users" `
+            -Member "RDP" `
+            -ErrorAction SilentlyContinue
 
       - name: Install Tailscale
+        shell: powershell
         run: |
-          Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi -OutFile ts.msi
-          Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
+          Invoke-WebRequest `
+            -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" `
+            -OutFile "$env:TEMP\tailscale.msi"
 
-      - name: Start Tailscale
+          Start-Process msiexec.exe `
+            -ArgumentList "/i `"$env:TEMP\tailscale.msi`" /quiet /norestart" `
+            -Wait
+
+      - name: Connect Tailscale
+        shell: powershell
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }}
+          & "C:\Program Files\Tailscale\tailscale.exe" up `
+            --authkey="$env:TAILSCALE_AUTH_KEY" `
+            --accept-routes=false
+
+          & "C:\Program Files\Tailscale\tailscale.exe" status
 
       - name: Keep Alive
+        shell: powershell
         run: |
           while ($true) {
-            Start-Sleep 300
+            Start-Sleep -Seconds 300
           }
