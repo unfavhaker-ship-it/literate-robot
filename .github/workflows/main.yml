@@ -24,45 +24,40 @@ jobs:
             -Value 1 `
             -Force
 
-          Set-ItemProperty `
-            -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-            -Name 'SecurityLayer' `
-            -Value 1 `
-            -Force
-
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
           Restart-Service TermService -Force
 
       - name: Create RDP User
         shell: powershell
-        env:
-          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
         run: |
+          $username = "AT@2929"
+          $password = "AT@2929"
+
           $securePass = ConvertTo-SecureString `
-            $env:RDP_PASSWORD `
+            $password `
             -AsPlainText `
             -Force
 
-          if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
-              Set-LocalUser -Name "RDP" -Password $securePass
+          if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
+              Set-LocalUser -Name $username -Password $securePass
           } else {
               New-LocalUser `
-                -Name "RDP" `
+                -Name $username `
                 -Password $securePass `
                 -AccountNeverExpires
           }
 
           Add-LocalGroupMember `
             -Group "Remote Desktop Users" `
-            -Member "RDP" `
+            -Member $username `
             -ErrorAction SilentlyContinue
 
       - name: Install Tailscale
         shell: powershell
         run: |
           Invoke-WebRequest `
-            -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" `
+            "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" `
             -OutFile "$env:TEMP\tailscale.msi"
 
           Start-Process msiexec.exe `
@@ -74,9 +69,12 @@ jobs:
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAILSCALE_AUTH_KEY)) {
+            throw "TAILSCALE_AUTH_KEY secret is missing."
+          }
+
           & "C:\Program Files\Tailscale\tailscale.exe" up `
-            --authkey="$env:TAILSCALE_AUTH_KEY" `
-            --accept-routes=false
+            --authkey="$env:TAILSCALE_AUTH_KEY"
 
           & "C:\Program Files\Tailscale\tailscale.exe" status
 
