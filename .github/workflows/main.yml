@@ -8,7 +8,12 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 360
 
+    env:
+      RDP_USERNAME: RDPAdmin47
+      RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+
     steps:
+
       - name: Configure RDP
         shell: powershell
         run: |
@@ -31,8 +36,12 @@ jobs:
       - name: Create RDP User
         shell: powershell
         run: |
-          $username = "RDPAdmin47"
-          $password = "Vx9!Rdp2026#Qm"
+          $username = $env:RDP_USERNAME
+          $password = $env:RDP_PASSWORD
+
+          if ([string]::IsNullOrWhiteSpace($password)) {
+              throw "RDP_PASSWORD GitHub Secret is missing."
+          }
 
           $securePass = ConvertTo-SecureString `
             $password `
@@ -60,7 +69,10 @@ jobs:
             -Member $username `
             -ErrorAction SilentlyContinue
 
-          Write-Host "RDP user created successfully."
+          Write-Host "================================="
+          Write-Host "RDP USER: $username"
+          Write-Host "RDP PASSWORD: GitHub Secret RDP_PASSWORD"
+          Write-Host "================================="
 
       - name: Install Tailscale
         shell: powershell
@@ -82,17 +94,22 @@ jobs:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:TAILSCALE_AUTH_KEY)) {
-              throw "TAILSCALE_AUTH_KEY GitHub Secret missing."
+              throw "TAILSCALE_AUTH_KEY GitHub Secret is missing."
           }
 
           & "C:\Program Files\Tailscale\tailscale.exe" up `
             --authkey="$env:TAILSCALE_AUTH_KEY"
 
+          Write-Host "Tailscale status:"
           & "C:\Program Files\Tailscale\tailscale.exe" status
 
       - name: Keep Alive
         shell: powershell
         run: |
+          Write-Host "RDP session is running."
+          Write-Host "Username: $env:RDP_USERNAME"
+          Write-Host "Password: stored in GitHub Secret RDP_PASSWORD"
+
           while ($true) {
               Start-Sleep -Seconds 300
           }
