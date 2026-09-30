@@ -31,17 +31,24 @@ jobs:
       - name: Create RDP User
         shell: powershell
         run: |
-          $username = "AT@2929"
-          $password = "AT@2929"
+          $username = "RDPAdmin47"
+          $password = "Vx9!Rdp2026#Qm"
 
           $securePass = ConvertTo-SecureString `
             $password `
             -AsPlainText `
             -Force
 
-          if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
-              Set-LocalUser -Name $username -Password $securePass
-          } else {
+          $existing = Get-LocalUser `
+            -Name $username `
+            -ErrorAction SilentlyContinue
+
+          if ($existing) {
+              Set-LocalUser `
+                -Name $username `
+                -Password $securePass
+          }
+          else {
               New-LocalUser `
                 -Name $username `
                 -Password $securePass `
@@ -53,15 +60,20 @@ jobs:
             -Member $username `
             -ErrorAction SilentlyContinue
 
+          Write-Host "RDP user created successfully."
+
       - name: Install Tailscale
         shell: powershell
         run: |
-          Invoke-WebRequest `
-            "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" `
-            -OutFile "$env:TEMP\tailscale.msi"
+          $installer = "$env:TEMP\tailscale.msi"
 
-          Start-Process msiexec.exe `
-            -ArgumentList "/i `"$env:TEMP\tailscale.msi`" /quiet /norestart" `
+          Invoke-WebRequest `
+            -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" `
+            -OutFile $installer
+
+          Start-Process `
+            msiexec.exe `
+            -ArgumentList "/i `"$installer`" /quiet /norestart" `
             -Wait
 
       - name: Connect Tailscale
@@ -70,7 +82,7 @@ jobs:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:TAILSCALE_AUTH_KEY)) {
-            throw "TAILSCALE_AUTH_KEY secret is missing."
+              throw "TAILSCALE_AUTH_KEY GitHub Secret missing."
           }
 
           & "C:\Program Files\Tailscale\tailscale.exe" up `
@@ -82,5 +94,5 @@ jobs:
         shell: powershell
         run: |
           while ($true) {
-            Start-Sleep -Seconds 300
+              Start-Sleep -Seconds 300
           }
