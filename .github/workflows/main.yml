@@ -1,116 +1,65 @@
-name: RDP
+name: Windows RDP with Tailscale
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-rdp:
+  windows-rdp:
     runs-on: windows-2022
-    timeout-minutes: 360
-
-    env:
-      RDP_USERNAME: RDPAdmin47
-      RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+    timeout-minutes: 350
 
     steps:
-
-      - name: Configure RDP
-        shell: powershell
+      - name: Configure Windows RDP
+        shell: pwsh
         run: |
-          Set-ItemProperty `
-            -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' `
-            -Name 'fDenyTSConnections' `
-            -Value 0 `
-            -Force
+          Write-Host "Checking Windows Remote Desktop configuration..."
 
           Set-ItemProperty `
-            -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-            -Name 'UserAuthentication' `
-            -Value 1 `
-            -Force
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name 'fDenyTSConnections' `
+            -Value 0
 
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-          Restart-Service TermService -Force
-
-      - name: Create RDP User
-        shell: powershell
-        run: |
-          $username = $env:RDP_USERNAME
-          $password = $env:RDP_PASSWORD
-
-          if ([string]::IsNullOrWhiteSpace($password)) {
-              throw "RDP_PASSWORD GitHub Secret is missing."
-          }
-
-          $securePass = ConvertTo-SecureString `
-            $password `
-            -AsPlainText `
-            -Force
-
-          $existing = Get-LocalUser `
-            -Name $username `
-            -ErrorAction SilentlyContinue
-
-          if ($existing) {
-              Set-LocalUser `
-                -Name $username `
-                -Password $securePass
-          }
-          else {
-              New-LocalUser `
-                -Name $username `
-                -Password $securePass `
-                -AccountNeverExpires
-          }
-
-          Add-LocalGroupMember `
-            -Group "Remote Desktop Users" `
-            -Member $username `
-            -ErrorAction SilentlyContinue
-
-          Write-Host "================================="
-          Write-Host "RDP USER: $username"
-          Write-Host "RDP PASSWORD: GitHub Secret RDP_PASSWORD"
-          Write-Host "================================="
+          Write-Host "RDP settings configured."
 
       - name: Install Tailscale
-        shell: powershell
+        shell: pwsh
         run: |
-          $installer = "$env:TEMP\tailscale.msi"
+          $installer = "$env:TEMP\tailscale-setup.exe"
 
           Invoke-WebRequest `
-            -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" `
+            -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" `
             -OutFile $installer
 
           Start-Process `
-            msiexec.exe `
-            -ArgumentList "/i `"$installer`" /quiet /norestart" `
+            -FilePath $installer `
+            -ArgumentList "/quiet" `
             -Wait
 
       - name: Connect Tailscale
-        shell: powershell
+        shell: pwsh
         env:
-          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:TAILSCALE_AUTH_KEY)) {
-              throw "TAILSCALE_AUTH_KEY GitHub Secret is missing."
+          $tailscale = "$env:ProgramFiles\Tailscale\tailscale.exe"
+
+          if (!(Test-Path $tailscale)) {
+            throw "Tailscale installation failed."
           }
 
-          & "C:\Program Files\Tailscale\tailscale.exe" up `
-            --authkey="$env:TAILSCALE_AUTH_KEY"
+          & $tailscale up --authkey="$env:TS_AUTHKEY" --hostname="github-windows-runner"
 
-          Write-Host "Tailscale status:"
-          & "C:\Program Files\Tailscale\tailscale.exe" status
+          if ($LASTEXITCODE -ne 0) {
+            throw "Tailscale connection failed."
+          }
 
-      - name: Keep Alive
-        shell: powershell
+          & $tailscale ip -4
+
+      - name: Keep Runner Active
+        shell: pwsh
         run: |
-          Write-Host "RDP session is running."
-          Write-Host "Username: $env:RDP_USERNAME"
-          Write-Host "Password: stored in GitHub Secret RDP_PASSWORD"
-
           while ($true) {
-              Start-Sleep -Seconds 300
+            Write-Host "Windows runner is active."
+            Start-Sleep -Seconds 60
           }
-          
